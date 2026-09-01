@@ -1,7 +1,7 @@
 {
-  "version": "1.0.9",
-  "changelog": "UI update release v1.0.9",
-  "releasedAt": "2026-09-01T07:46:12.405Z",
+  "version": "1.0.10",
+  "changelog": "UI update release v1.0.10",
+  "releasedAt": "2026-09-01T07:50:24.930Z",
   "mandatory": false,
   "android": {
     "bundleFile": "index.android.bundle",

@@ -32,7 +32,7 @@ function updateState(partial: Partial<OTAUpdateState>) {
   listeners.forEach((cb) => {
     try {
       cb(currentState);
-    } catch {}
+    } catch { }
   });
 }
 
