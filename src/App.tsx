@@ -5,7 +5,7 @@ import { LoginScreen } from './features/auth';
 import { WebScreen } from './features/dashboard';
 import { SiloScreen } from './features/silo';
 import { SirenPlayer } from './shared/components/SirenPlayer';
-import { OTAUpdateBanner } from './shared/components/OTAUpdateBanner';
+import { checkOTAUpdate, applyOTAUpdate } from './shared/services/otaUpdate';
 import { DEFAULT_WEB_URL } from './core/config/api';
 import { getAuthSession, clearAuthSession } from './features/auth/api';
 import {
@@ -20,7 +20,7 @@ export function App(): React.JSX.Element {
   const [authData, setAuthData] = useState<AuthSession | null>(null);
   const [initializing, setInitializing] = useState<boolean>(true);
 
-  // Initialize push notifications and restore session
+  // Initialize push notifications, silent OTA check, and restore session
   useEffect(() => {
     let isMounted = true;
 
@@ -30,7 +30,14 @@ export function App(): React.JSX.Element {
         await requestNotificationPermission();
         await getFCMToken();
 
-        // 2. Check and restore saved authentication session
+        // 2. Check and apply any OTA updates silently in the background (no popup)
+        checkOTAUpdate().then((manifest) => {
+          if (manifest) {
+            applyOTAUpdate(manifest);
+          }
+        }).catch(() => {});
+
+        // 3. Check and restore saved authentication session
         const savedSession = await getAuthSession();
         if (isMounted) {
           if (savedSession) {
@@ -98,7 +105,6 @@ export function App(): React.JSX.Element {
           <SiloScreen onBack={() => setCurrentScreen('web')} />
         )}
         <SirenPlayer />
-        <OTAUpdateBanner />
       </View>
     </SafeAreaProvider>
   );
