@@ -262,7 +262,7 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
               {/* Sign In Primary Action Button */}
               <PrimaryButton
                 title="Sign In"
-                backgroundColor="#0284C7"
+                backgroundColor="#F59E0B"
                 loading={loading}
                 onPress={handleLogin}
                 style={styles.signInButton}
@@ -344,8 +344,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
   },
   checkboxChecked: {
-    backgroundColor: '#0284C7',
-    borderColor: '#0284C7',
+    backgroundColor: '#F59E0B',
+    borderColor: '#F59E0B',
   },
   checkmark: {
     color: '#FFFFFF',
@@ -359,7 +359,7 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   forgotText: {
-    color: '#0284C7',
+    color: '#F59E0B',
     fontSize: 13,
     fontWeight: '700',
   },
