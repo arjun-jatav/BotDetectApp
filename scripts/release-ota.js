@@ -70,11 +70,11 @@ const manifest = {
   mandatory: false,
   android: {
     bundleFile: 'index.android.bundle',
-    bundleUrl: `https://v2.checkprojectstatus.com/ota/${version}/index.android.bundle`,
+    bundleUrl: `https://raw.githubusercontent.com/arjun-jatav/BotDetectApp/main/dist/ota/index.android.bundle`,
   },
   ios: {
     bundleFile: 'index.ios.bundle',
-    bundleUrl: `https://v2.checkprojectstatus.com/ota/${version}/index.ios.bundle`,
+    bundleUrl: `https://raw.githubusercontent.com/arjun-jatav/BotDetectApp/main/dist/ota/index.ios.bundle`,
   },
 };
 
