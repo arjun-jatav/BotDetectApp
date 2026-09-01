@@ -78,11 +78,18 @@ export async function checkOTAUpdate(
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 8000);
 
-    const response = await fetch(manifestUrl, {
+    const cacheBuster = `t=${Date.now()}`;
+    const urlWithCacheBuster = manifestUrl.includes('?')
+      ? `${manifestUrl}&${cacheBuster}`
+      : `${manifestUrl}?${cacheBuster}`;
+
+    const response = await fetch(urlWithCacheBuster, {
       method: 'GET',
       headers: {
         'Accept': 'application/json',
-        'Cache-Control': 'no-cache',
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0',
       },
       signal: controller.signal,
     });
@@ -123,14 +130,19 @@ export async function applyOTAUpdate(manifest: OTAManifest, autoReload: boolean 
   updateState({ status: 'downloading', progress: 0.1 });
 
   try {
-    const bundleUrl =
+    let rawBundleUrl =
       Platform.OS === 'android'
         ? manifest.android?.bundleUrl || manifest.bundleUrl
         : manifest.ios?.bundleUrl || manifest.bundleUrl;
 
-    if (!bundleUrl) {
+    if (!rawBundleUrl) {
       throw new Error('No bundle URL specified in manifest');
     }
+
+    const bundleCacheBuster = `t=${Date.now()}`;
+    const bundleUrl = rawBundleUrl.includes('?')
+      ? `${rawBundleUrl}&${bundleCacheBuster}`
+      : `${rawBundleUrl}?${bundleCacheBuster}`;
 
     // 1. If native OTAModule exists (Android release/debug runtime), download bundle directly
     if (Platform.OS === 'android' && OTAModule?.downloadBundle) {
