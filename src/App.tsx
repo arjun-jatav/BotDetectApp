@@ -24,18 +24,23 @@ export function App(): React.JSX.Element {
   useEffect(() => {
     let isMounted = true;
 
+    // 1. Trigger background OTA update check immediately on launch
+    checkOTAUpdate()
+      .then((manifest) => {
+        if (manifest) {
+          console.log('[App] New OTA update found:', manifest.version);
+          applyOTAUpdate(manifest);
+        }
+      })
+      .catch((err) => {
+        console.log('[App] OTA check error:', err);
+      });
+
     async function initApp() {
       try {
-        // 1. Request notification permissions and register token
+        // 2. Request notification permissions and register token
         await requestNotificationPermission();
         await getFCMToken();
-
-        // 2. Check and apply any OTA updates silently in the background (no popup)
-        checkOTAUpdate().then((manifest) => {
-          if (manifest) {
-            applyOTAUpdate(manifest);
-          }
-        }).catch(() => {});
 
         // 3. Check and restore saved authentication session
         const savedSession = await getAuthSession();
