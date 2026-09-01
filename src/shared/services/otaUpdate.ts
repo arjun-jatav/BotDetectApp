@@ -1,6 +1,9 @@
+import { NativeModules, Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { OTA_CONFIG, CURRENT_BUNDLE_VERSION } from '../../core/config/ota';
 import { OTAManifest, OTAUpdateState } from '../../core/types';
+
+const { OTAModule } = NativeModules;
 
 type OTAListener = (state: OTAUpdateState) => void;
 const listeners = new Set<OTAListener>();
@@ -116,17 +119,27 @@ export async function checkOTAUpdate(
 /**
  * Download and apply the new OTA update bundle
  */
-export async function applyOTAUpdate(manifest: OTAManifest): Promise<boolean> {
+export async function applyOTAUpdate(manifest: OTAManifest, autoReload: boolean = true): Promise<boolean> {
   updateState({ status: 'downloading', progress: 0.1 });
 
   try {
-    // 1. Simulate / fetch download progress
-    for (let p = 0.2; p <= 1.0; p += 0.2) {
-      await new Promise<void>((resolve) => setTimeout(() => resolve(), 120));
-      updateState({ progress: Math.min(1.0, Math.round(p * 100) / 100) });
+    const bundleUrl =
+      Platform.OS === 'android'
+        ? manifest.android?.bundleUrl || manifest.bundleUrl
+        : manifest.ios?.bundleUrl || manifest.bundleUrl;
+
+    if (!bundleUrl) {
+      throw new Error('No bundle URL specified in manifest');
     }
 
-    // 2. Persist new active bundle version
+    // 1. If native OTAModule exists (Android release/debug runtime), download bundle directly
+    if (Platform.OS === 'android' && OTAModule?.downloadBundle) {
+      console.log('[OTA] Downloading dynamic bundle from:', bundleUrl);
+      await OTAModule.downloadBundle(bundleUrl);
+      console.log('[OTA] Dynamic bundle successfully written to device internal storage');
+    }
+
+    // 2. Persist new active bundle version in storage
     await AsyncStorage.setItem(OTA_CONFIG.storageKey, manifest.version);
     updateState({
       status: 'ready',
@@ -134,6 +147,12 @@ export async function applyOTAUpdate(manifest: OTAManifest): Promise<boolean> {
       latestVersion: manifest.version,
       progress: 1.0,
     });
+
+    // 3. Reload app context if autoReload is true
+    if (autoReload && Platform.OS === 'android' && OTAModule?.reloadApp) {
+      console.log('[OTA] Triggering seamless app reload with updated UI...');
+      await OTAModule.reloadApp();
+    }
 
     return true;
   } catch (err: unknown) {

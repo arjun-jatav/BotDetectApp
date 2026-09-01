@@ -35,14 +35,21 @@ export interface NotificationPayload {
 
 export type AppScreen = 'login' | 'web' | 'silo' | 'signup' | 'icon-config';
 
+export interface OTAPlatformConfig {
+  bundleUrl: string;
+  bundleFile?: string;
+}
+
 export interface OTAManifest {
   version: string;
-  bundleUrl: string;
+  bundleUrl?: string;
   hash?: string;
   mandatory?: boolean;
   changelog?: string;
   minNativeVersion?: string;
   releasedAt?: string;
+  android?: OTAPlatformConfig;
+  ios?: OTAPlatformConfig;
 }
 
 export type OTAStatus =
