@@ -46,12 +46,12 @@ export function PrimaryButton({
 
 const styles = StyleSheet.create({
   button: {
-    backgroundColor: '#F59E0B',
+    backgroundColor: '#7C3AED',
     borderRadius: 10,
     height: 48,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#F59E0B',
+    shadowColor: '#7C3AED',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.25,
     shadowRadius: 8,

