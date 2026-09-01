@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "717443742944",
+    "project_id": "botdetectapp",
+    "storage_bucket": "botdetectapp.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:717443742944:android:8495cf09b726da254b6485",
+        "android_client_info": {
+          "package_name": "com.botdetectapp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDfqaGK8hqRuTLiY47ajiup19tGg6v03c8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

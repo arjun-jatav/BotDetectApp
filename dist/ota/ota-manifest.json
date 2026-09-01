@@ -1,0 +1,14 @@
+{
+  "version": "1.0.2",
+  "changelog": "UI update release v1.0.2",
+  "releasedAt": "2026-09-01T06:49:03.753Z",
+  "mandatory": false,
+  "android": {
+    "bundleFile": "index.android.bundle",
+    "bundleUrl": "https://v2.checkprojectstatus.com/ota/1.0.2/index.android.bundle"
+  },
+  "ios": {
+    "bundleFile": "index.ios.bundle",
+    "bundleUrl": "https://v2.checkprojectstatus.com/ota/1.0.2/index.ios.bundle"
+  }
+}
