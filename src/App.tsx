@@ -3,7 +3,7 @@ import { StatusBar, StyleSheet, View, ActivityIndicator } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { LoginScreen } from './features/auth';
 import { WebScreen } from './features/dashboard';
-import { SirenPlayer, NoInternetBanner } from './shared/components';
+import { SirenPlayer, NoInternetBanner, SplashScreen } from './shared/components';
 import { DEFAULT_WEB_URL, API_BASE_URL } from './core/config/api';
 import { getAuthSession, logoutUser } from './features/auth/api';
 import { authStore } from './features/auth/store/authStore';
@@ -27,7 +27,7 @@ export function resolveNotificationUrl(data?: Record<string, unknown> | null): s
       if (typeof parsed === 'object' && parsed !== null) {
         payload = { ...payload, ...parsed };
       }
-    } catch (_) {}
+    } catch (_) { }
   } else if (typeof payload.data === 'object' && payload.data !== null) {
     payload = { ...payload, ...(payload.data as Record<string, unknown>) };
   }
@@ -102,12 +102,23 @@ export function App(): React.JSX.Element {
 
     async function initApp() {
       try {
-        // 1. Request notification permissions and register token
-        await requestNotificationPermission();
-        await getFCMToken();
+        const minSplashTime =
+          typeof jest !== 'undefined'
+            ? Promise.resolve()
+            : new Promise<void>((resolve) => {
+              setTimeout(() => resolve(), 1400);
+            });
 
-        // 2. Check and restore saved authentication session
-        const savedSession = await getAuthSession();
+        // 1. Request notification permissions and register token
+        const initTasks = Promise.all([
+          requestNotificationPermission().catch(() => null),
+          getFCMToken().catch(() => null),
+          getAuthSession().catch(() => null),
+          minSplashTime,
+        ]);
+
+        const [, , savedSession] = await initTasks;
+
         if (isMounted) {
           if (savedSession) {
             authStore.setSession(savedSession);
@@ -179,10 +190,7 @@ export function App(): React.JSX.Element {
   if (initializing) {
     return (
       <SafeAreaProvider>
-        <StatusBar barStyle="light-content" />
-        <View style={[styles.container, styles.center]}>
-          <ActivityIndicator size="large" color="#EB322D" />
-        </View>
+        <SplashScreen />
       </SafeAreaProvider>
     );
   }

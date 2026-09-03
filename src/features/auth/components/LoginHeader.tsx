@@ -1,20 +1,20 @@
 import React from 'react';
-import { StyleSheet, View, Text, Image } from 'react-native';
+import { StyleSheet, View, Text } from 'react-native';
+import { JPLoftLogo } from '../../../shared/components/icons';
 
 interface LoginHeaderProps {
   isSmallScreen?: boolean;
 }
 
 export function LoginHeader({ isSmallScreen = false }: LoginHeaderProps) {
+  const logoWidth = isSmallScreen ? 128 : 150;
+  const logoHeight = Math.round((logoWidth * 67) / 164);
+
   return (
     <View style={[styles.header, isSmallScreen && styles.headerCompact]}>
-      {/* JPLoft Logo */}
+      {/* Official Vector JPLoft Logo */}
       <View style={[styles.logoContainer, isSmallScreen && styles.logoContainerCompact]}>
-        <Image
-          source={require('../../../assets/images/jploft_logo.png')}
-          style={[styles.logoImage, isSmallScreen && styles.logoImageCompact]}
-          resizeMode="contain"
-        />
+        <JPLoftLogo width={logoWidth} height={logoHeight} />
       </View>
 
       {/* Title & Subtitle */}
@@ -37,17 +37,10 @@ const styles = StyleSheet.create({
   },
   logoContainer: {
     marginBottom: 20,
+    alignItems: 'flex-start',
   },
   logoContainerCompact: {
     marginBottom: 14,
-  },
-  logoImage: {
-    width: 150,
-    height: 52,
-  },
-  logoImageCompact: {
-    width: 126,
-    height: 44,
   },
   title: {
     fontSize: 30,

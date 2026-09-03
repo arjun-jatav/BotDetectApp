@@ -1,3 +1,5 @@
 <resources>
+    <color name="white">#FFFFFF</color>
+    <color name="splash_background">#FFFFFF</color>
     <color name="notification_color">#EB322D</color>
 </resources>
