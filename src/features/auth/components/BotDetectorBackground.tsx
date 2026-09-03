@@ -136,7 +136,7 @@ export function BotDetectorBackground() {
           <Animated.View style={[styles.hudDot, { opacity: dotPulse }]} />
           <Text style={styles.hudText}>SHIELD: ACTIVE</Text>
         </View>
-        <Text style={styles.hudMeta}>SYS://BOT_DETECT.v2</Text>
+        <Text style={styles.hudMeta}>SYS://JPLOFT_AGENT.v2</Text>
       </View>
 
       {/* HUD Corner Tech Markers */}
