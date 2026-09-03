@@ -52,6 +52,7 @@ export const InputField = forwardRef<React.ElementRef<typeof TextInput>, InputFi
             ref={ref}
             style={[styles.input, isPassword && styles.inputWithToggle, style]}
             placeholderTextColor="#94A3B8"
+            underlineColorAndroid="transparent"
             secureTextEntry={isPassword && !showPassword}
             onFocus={(e) => {
               setIsFocused(true);
@@ -122,17 +123,10 @@ const styles = StyleSheet.create({
     borderColor: '#CBD5E1',
     height: 48,
     paddingHorizontal: 14,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04,
-    shadowRadius: 2,
-    elevation: 1,
+    overflow: 'hidden',
   },
   inputFocused: {
     borderColor: '#EB322D',
-    shadowColor: '#EB322D',
-    shadowOpacity: 0.15,
-    shadowRadius: 4,
   },
   input: {
     flex: 1,
@@ -140,6 +134,9 @@ const styles = StyleSheet.create({
     color: '#0F172A',
     fontSize: 15,
     padding: 0,
+    margin: 0,
+    borderWidth: 0,
+    backgroundColor: 'transparent',
   },
   inputWithToggle: {
     paddingRight: 10,
@@ -151,7 +148,7 @@ const styles = StyleSheet.create({
   },
   inputError: {
     borderColor: '#EF4444',
-    backgroundColor: 'rgba(239, 68, 68, 0.03)',
+    backgroundColor: '#FFFFFF',
   },
   errorText: {
     color: '#EF4444',

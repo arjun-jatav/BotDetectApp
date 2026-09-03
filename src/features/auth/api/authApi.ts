@@ -1,8 +1,16 @@
+import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ENDPOINTS, API_BASE_URL } from '../../../core/config/api';
 import { AuthSession, LoginResponse } from '../../../core/types';
 
 export const AUTH_STORAGE_KEY = '@botdetect_auth_session';
+export const SAVED_CREDENTIALS_KEY = '@botdetect_saved_credentials';
+
+export interface SavedCredentials {
+  identifier: string;
+  password: string;
+  keepSignedIn: boolean;
+}
 
 /**
  * Save authentication session to persistent storage
@@ -43,13 +51,110 @@ export async function clearAuthSession(): Promise<void> {
 }
 
 /**
+ * Log out user from backend API and clear session
+ */
+export async function logoutUser(
+  session?: AuthSession | null,
+  fcmToken?: string | null
+): Promise<void> {
+  try {
+    const currentSession = session || (await getAuthSession());
+    const token =
+      currentSession?.token ||
+      currentSession?.admin_token ||
+      currentSession?.accessToken ||
+      currentSession?.jwt;
+
+    let tokenToSend: string | null | undefined =
+      fcmToken || currentSession?.fcmToken || currentSession?.FcmToken;
+    if (!tokenToSend) {
+      tokenToSend = await AsyncStorage.getItem('@botdetect_fcm_token');
+    }
+
+    if (token) {
+      const payload = {
+        fcmToken: tokenToSend || '',
+        deviceType: Platform.OS === 'android' ? 'android' : Platform.OS === 'ios' ? 'ios' : 'mobile',
+      };
+
+      console.log('[authApi] Calling POST /api/logout with payload:', payload);
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 6000);
+
+      await fetch(ENDPOINTS.LOGOUT, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      })
+        .then((res) => {
+          console.log('[authApi] Logout API response status:', res.status);
+        })
+        .catch((err) => {
+          console.warn('[authApi] Logout request failed:', err);
+        })
+        .finally(() => {
+          clearTimeout(timeoutId);
+        });
+    }
+  } catch (error) {
+    console.warn('[authApi] Error during logout:', error);
+  } finally {
+    await clearAuthSession();
+  }
+}
+
+/**
+ * Save login credentials (email/password) to persistent storage for autofill
+ */
+export async function saveSavedCredentials(credentials: SavedCredentials): Promise<void> {
+  try {
+    await AsyncStorage.setItem(SAVED_CREDENTIALS_KEY, JSON.stringify(credentials));
+  } catch (err) {
+    console.warn('[auth] Failed to persist saved credentials:', err);
+  }
+}
+
+/**
+ * Retrieve saved login credentials from persistent storage
+ */
+export async function getSavedCredentials(): Promise<SavedCredentials | null> {
+  try {
+    const raw = await AsyncStorage.getItem(SAVED_CREDENTIALS_KEY);
+    if (!raw) {
+      return null;
+    }
+    return JSON.parse(raw) as SavedCredentials;
+  } catch (err) {
+    console.warn('[auth] Failed to read saved credentials:', err);
+    return null;
+  }
+}
+
+/**
+ * Remove saved credentials from persistent storage
+ */
+export async function clearSavedCredentials(): Promise<void> {
+  try {
+    await AsyncStorage.removeItem(SAVED_CREDENTIALS_KEY);
+  } catch (err) {
+    console.warn('[auth] Failed to clear saved credentials:', err);
+  }
+}
+
+/**
  * Perform login request and persist session upon success
  */
 export async function loginUser(
   identifier: string,
   password: string,
   timeoutMs: number = 10000,
-  fcmToken?: string | null
+  fcmToken?: string | null,
+  keepSignedIn: boolean = true
 ): Promise<LoginResponse> {
   const trimmed = identifier.trim();
   const isEmail = trimmed.includes('@');
@@ -60,6 +165,7 @@ export async function loginUser(
     : { username: trimmed, password };
 
   if (fcmToken) {
+    payload.FcmToken = fcmToken;
     payload.fcm_token = fcmToken;
     payload.fcmToken = fcmToken;
     payload.device_token = fcmToken;
@@ -102,7 +208,18 @@ export async function loginUser(
         (data?.jwt as string) ||
         ((data?.data as Record<string, unknown>)?.token as string),
     };
-    await saveAuthSession(sessionData);
+
+    if (keepSignedIn) {
+      await saveAuthSession(sessionData);
+      await saveSavedCredentials({
+        identifier: trimmed,
+        password: password,
+        keepSignedIn: true,
+      });
+    } else {
+      await clearAuthSession();
+      await clearSavedCredentials();
+    }
 
     return sessionData;
   } catch (error: unknown) {

@@ -3,51 +3,120 @@ import { StatusBar, StyleSheet, View, ActivityIndicator } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { LoginScreen } from './features/auth';
 import { WebScreen } from './features/dashboard';
-import { SiloScreen } from './features/silo';
-import { SirenPlayer } from './shared/components/SirenPlayer';
-import { checkOTAUpdate, applyOTAUpdate } from './shared/services/otaUpdate';
-import { DEFAULT_WEB_URL } from './core/config/api';
-import { getAuthSession, clearAuthSession } from './features/auth/api';
+import { SirenPlayer, NoInternetBanner } from './shared/components';
+import { DEFAULT_WEB_URL, API_BASE_URL } from './core/config/api';
+import { getAuthSession, logoutUser } from './features/auth/api';
+import { authStore } from './features/auth/store/authStore';
 import {
   requestNotificationPermission,
   getFCMToken,
   setupNotificationListeners,
+  setNativeAuthStatus,
 } from './shared/services/notifications';
-import { AuthSession, LoginResponse, AppScreen } from './core/types';
+import { stopSiren } from './shared/services/siren';
+import { AuthSession, LoginResponse } from './core/types';
+
+export function resolveNotificationUrl(data?: Record<string, unknown> | null): string | null {
+  if (!data || typeof data !== 'object') return null;
+
+  // Flatten if payload has nested data string or object
+  let payload: Record<string, unknown> = { ...data };
+  if (typeof payload.data === 'string') {
+    try {
+      const parsed = JSON.parse(payload.data);
+      if (typeof parsed === 'object' && parsed !== null) {
+        payload = { ...payload, ...parsed };
+      }
+    } catch (_) {}
+  } else if (typeof payload.data === 'object' && payload.data !== null) {
+    payload = { ...payload, ...(payload.data as Record<string, unknown>) };
+  }
+
+  // 1. Check direct explicit URL fields
+  const rawUrl =
+    (payload.url as string) ||
+    (payload.link as string) ||
+    (payload.chatUrl as string) ||
+    (payload.chat_url as string) ||
+    (payload.targetUrl as string) ||
+    (payload.target_url as string) ||
+    (payload.webUrl as string) ||
+    (payload.web_url as string) ||
+    (payload.redirectUrl as string) ||
+    (payload.redirect_url as string);
+
+  if (rawUrl && typeof rawUrl === 'string' && rawUrl.trim().length > 0) {
+    const trimmed = rawUrl.trim();
+    if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+      return trimmed;
+    }
+    const cleanPath = trimmed.startsWith('/') ? trimmed : `/${trimmed}`;
+    return `${API_BASE_URL}${cleanPath}`;
+  }
+
+  // 2. Check conversation ID / chat ID / session ID
+  const sessionId = (
+    payload.sessionId ||
+    payload.session_id ||
+    payload.conversationId ||
+    payload.conversation_id ||
+    payload.chatId ||
+    payload.chat_id ||
+    payload.leadId ||
+    payload.lead_id ||
+    payload.id
+  ) as string | number | undefined;
+
+  if (sessionId !== undefined && sessionId !== null) {
+    const cleanId = encodeURIComponent(String(sessionId).trim());
+    if (cleanId.length > 0) {
+      return `${API_BASE_URL}/admin/conversations?sessionId=${cleanId}`;
+    }
+  }
+
+  // 3. Check visitor ID
+  const visitorId = (
+    payload.visitorId ||
+    payload.visitor_id
+  ) as string | number | undefined;
+
+  if (visitorId !== undefined && visitorId !== null) {
+    const cleanVisitor = encodeURIComponent(String(visitorId).trim());
+    if (cleanVisitor.length > 0) {
+      return `${API_BASE_URL}/admin/conversations?visitorId=${cleanVisitor}`;
+    }
+  }
+
+  return DEFAULT_WEB_URL;
+}
 
 export function App(): React.JSX.Element {
-  const [currentScreen, setCurrentScreen] = useState<Extract<AppScreen, 'login' | 'web' | 'silo'>>('login');
+  const [currentScreen, setCurrentScreen] = useState<'login' | 'web'>('login');
   const [authData, setAuthData] = useState<AuthSession | null>(null);
+  const [activeWebUrl, setActiveWebUrl] = useState<string>(DEFAULT_WEB_URL);
+  const [pendingUrl, setPendingUrl] = useState<string | null>(null);
   const [initializing, setInitializing] = useState<boolean>(true);
 
-  // Initialize push notifications, silent OTA check, and restore session
   useEffect(() => {
     let isMounted = true;
 
-    // 1. Trigger background OTA update check immediately on launch
-    checkOTAUpdate()
-      .then((manifest) => {
-        if (manifest) {
-          console.log('[App] New OTA update found:', manifest.version);
-          applyOTAUpdate(manifest);
-        }
-      })
-      .catch((err) => {
-        console.log('[App] OTA check error:', err);
-      });
-
     async function initApp() {
       try {
-        // 2. Request notification permissions and register token
+        // 1. Request notification permissions and register token
         await requestNotificationPermission();
         await getFCMToken();
 
-        // 3. Check and restore saved authentication session
+        // 2. Check and restore saved authentication session
         const savedSession = await getAuthSession();
         if (isMounted) {
           if (savedSession) {
+            authStore.setSession(savedSession);
+            await setNativeAuthStatus(true);
             setAuthData(savedSession);
             setCurrentScreen('web');
+          } else {
+            authStore.setSession(null);
+            await setNativeAuthStatus(false);
           }
           setInitializing(false);
         }
@@ -61,7 +130,23 @@ export function App(): React.JSX.Element {
     initApp();
 
     // 3. Setup foreground and background notification listeners
-    const unsubscribeNotifications = setupNotificationListeners();
+    const unsubscribeNotifications = setupNotificationListeners(
+      undefined,
+      (data) => {
+        console.log('[App] Notification opened with data:', data);
+        const resolvedUrl = resolveNotificationUrl(data);
+        if (resolvedUrl) {
+          console.log('[App] Navigating to resolved notification URL:', resolvedUrl);
+          if (authStore.isAuthenticated()) {
+            setActiveWebUrl(resolvedUrl);
+            setCurrentScreen('web');
+          } else {
+            console.log('[App] User not authenticated; queueing pending notification target URL:', resolvedUrl);
+            setPendingUrl(resolvedUrl);
+          }
+        }
+      }
+    );
 
     return () => {
       isMounted = false;
@@ -70,13 +155,24 @@ export function App(): React.JSX.Element {
   }, []);
 
   const handleLoginSuccess = (userData?: LoginResponse) => {
+    authStore.setSession(userData ?? null);
+    setNativeAuthStatus(true);
     setAuthData(userData ?? null);
+    if (pendingUrl) {
+      console.log('[App] Redirecting to pending notification URL post-login:', pendingUrl);
+      setActiveWebUrl(pendingUrl);
+      setPendingUrl(null);
+    }
     setCurrentScreen('web');
   };
 
   const handleLogout = async () => {
-    await clearAuthSession();
+    stopSiren();
+    await setNativeAuthStatus(false);
+    authStore.setSession(null);
+    await logoutUser(authData);
     setAuthData(null);
+    setActiveWebUrl(DEFAULT_WEB_URL);
     setCurrentScreen('login');
   };
 
@@ -95,21 +191,24 @@ export function App(): React.JSX.Element {
     <SafeAreaProvider>
       <StatusBar barStyle="dark-content" />
       <View style={styles.container}>
+        <NoInternetBanner position="top" />
         {currentScreen === 'login' && (
           <LoginScreen onLoginSuccess={handleLoginSuccess} />
         )}
         {currentScreen === 'web' && (
           <WebScreen
-            initialUrl={DEFAULT_WEB_URL}
+            initialUrl={activeWebUrl}
             userData={authData}
             onLogout={handleLogout}
-            onNavigateToSilo={() => setCurrentScreen('silo')}
           />
         )}
-        {currentScreen === 'silo' && (
-          <SiloScreen onBack={() => setCurrentScreen('web')} />
-        )}
-        <SirenPlayer />
+        <SirenPlayer
+          onNavigate={(url) => {
+            console.log('[App] Navigating from Siren banner tap:', url);
+            setActiveWebUrl(url);
+            setCurrentScreen('web');
+          }}
+        />
       </View>
     </SafeAreaProvider>
   );

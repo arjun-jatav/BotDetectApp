@@ -1,9 +1,78 @@
-import { Platform, Alert, PermissionsAndroid } from 'react-native';
+import { Platform, PermissionsAndroid, DeviceEventEmitter, NativeModules } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { playSiren, stopSiren } from './siren';
-import { NotificationPayload } from '../../core/types';
+import { NotificationPayload, SirenNotificationType } from '../../core/types';
 
 export const FCM_TOKEN_STORAGE_KEY = '@botdetect_fcm_token';
+
+export const SIREN_NOTIFICATION_TYPES: readonly SirenNotificationType[] = [
+  'first_message',
+  'visitor_message',
+  'lead_captured',
+  'meeting_booked',
+  'attachment',
+  'visitor_landed',
+  'human_support',
+  'llm_credit_exhausted',
+  'conversation_taken_over',
+  'test_push',
+] as const;
+
+export function extractNotificationType(data?: Record<string, unknown> | null): string {
+  if (!data || typeof data !== 'object') {
+    return '';
+  }
+  const raw =
+    data.type ||
+    data.notification_type ||
+    data.notificationType ||
+    data.alert_type ||
+    data.alertType ||
+    data.event ||
+    data.category ||
+    '';
+  return typeof raw === 'string' ? raw.trim().toLowerCase().replace(/-/g, '_') : '';
+}
+
+export function shouldPlaySiren(data?: Record<string, unknown> | null): boolean {
+  if (!data || typeof data !== 'object') {
+    return false;
+  }
+
+  const soundEnabledRaw = data.soundEnabled ?? data.sound_enabled;
+  if (
+    soundEnabledRaw === false ||
+    soundEnabledRaw === 'false' ||
+    soundEnabledRaw === '0'
+  ) {
+    return false;
+  }
+
+  if (
+    soundEnabledRaw === true ||
+    soundEnabledRaw === 'true' ||
+    soundEnabledRaw === '1'
+  ) {
+    return true;
+  }
+
+  const soundUrl = data.soundUrl || data.sound_url;
+  if (typeof soundUrl === 'string' && soundUrl.trim().length > 0) {
+    return true;
+  }
+
+  const soundType = data.soundType || data.sound_type;
+  if (
+    typeof soundType === 'string' &&
+    soundType.trim().length > 0 &&
+    soundType.trim().toLowerCase() !== 'none'
+  ) {
+    return true;
+  }
+
+  const type = extractNotificationType(data);
+  return SIREN_NOTIFICATION_TYPES.includes(type as SirenNotificationType);
+}
 
 interface FirebaseRemoteMessage {
   notification?: {
@@ -98,6 +167,20 @@ export async function getFCMToken(): Promise<string | null> {
 }
 
 /**
+ * Update native Android auth state to control push notifications & siren behavior
+ */
+export async function setNativeAuthStatus(isLoggedIn: boolean): Promise<void> {
+  if (Platform.OS === 'android' && NativeModules.SirenModule?.setAuthStatus) {
+    try {
+      await NativeModules.SirenModule.setAuthStatus(isLoggedIn);
+      console.log('[notifications] Native auth status updated:', isLoggedIn);
+    } catch (err) {
+      console.warn('[notifications] Failed to set native auth status:', err);
+    }
+  }
+}
+
+/**
  * Setup push notification listeners for Android
  */
 export function setupNotificationListeners(
@@ -105,7 +188,7 @@ export function setupNotificationListeners(
   onNotificationOpened?: (data: Record<string, unknown>) => void
 ): () => void {
   if (Platform.OS !== 'android') {
-    return () => {};
+    return () => { };
   }
 
   try {
@@ -122,46 +205,98 @@ export function setupNotificationListeners(
     const unsubscribeOnMessage = onMessage(
       messagingInstance,
       async (remoteMessage: FirebaseRemoteMessage) => {
-        console.log('[notifications] Foreground message received:', remoteMessage);
+        // If user is logged out, suppress foreground notification & siren
+        const session = await AsyncStorage.getItem('@botdetect_auth_session');
+        if (!session) {
+          console.log('🚫 [PUSH NOTIFICATION] Ignored in foreground because user is logged out.');
+          return;
+        }
 
-        // Run continuous siren on notification arrival (Android)
-        playSiren();
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        console.log('🔔 [PUSH NOTIFICATION - FOREGROUND RECEIVED]');
+        console.log('📦 Notification Title:', remoteMessage.notification?.title);
+        console.log('📦 Notification Body:', remoteMessage.notification?.body);
+        console.log('📦 Full Data Payload:', JSON.stringify(remoteMessage.data, null, 2));
+        console.log('🎵 soundEnabled:', remoteMessage.data?.soundEnabled);
+        console.log('🎵 soundType:', remoteMessage.data?.soundType);
+        console.log('🎵 soundUrl:', remoteMessage.data?.soundUrl);
+        console.log('🔗 url:', remoteMessage.data?.url);
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
-        const title = remoteMessage.notification?.title || 'BotDetect Alert';
-        const body = remoteMessage.notification?.body || 'New notification received';
+        const title =
+          remoteMessage.notification?.title ||
+          (remoteMessage.data?.title as string) ||
+          'JPLoft Agent Alert';
+        const body =
+          remoteMessage.notification?.body ||
+          (remoteMessage.data?.body as string) ||
+          'New notification received';
+
+        const fullPayload: Record<string, unknown> = {
+          ...remoteMessage.data,
+          title,
+          body,
+        };
+
+        const qualifiesForSiren = shouldPlaySiren(fullPayload);
+        if (qualifiesForSiren) {
+          const notifType = extractNotificationType(fullPayload);
+          console.log('🚨 [PUSH NOTIFICATION] Triggering sound/siren & banner for type:', notifType);
+          playSiren(0, notifType, fullPayload);
+        }
 
         if (onNotificationReceived) {
           onNotificationReceived({
             title,
             body,
-            data: remoteMessage.data,
+            data: fullPayload,
           });
-        } else {
-          Alert.alert(
-            title,
-            body,
-            [
-              {
-                text: 'Stop Siren',
-                style: 'cancel',
-                onPress: () => stopSiren(),
-              },
-              {
-                text: 'OK',
-                onPress: () => stopSiren(),
-              },
-            ],
-            { cancelable: false }
-          );
         }
       }
     );
 
-    // 2. Notification opened from background state
+    // 2. Native Android onNotificationOpened listener (for foreground & notification shade clicks)
+    const nativeNotificationSub = DeviceEventEmitter.addListener(
+      'onNotificationOpened',
+      (data: Record<string, unknown>) => {
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        console.log('👆 [PUSH NOTIFICATION - TAPPED IN FOREGROUND/SHADE]');
+        console.log('📦 Tapped Data:', JSON.stringify(data, null, 2));
+        console.log('🔗 Target URL:', data?.url);
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        stopSiren();
+        if (onNotificationOpened && data) {
+          onNotificationOpened(data);
+        }
+      }
+    );
+
+    // Check if initial notification data was captured in MainActivity during cold launch
+    if (NativeModules.SirenModule?.getInitialNotification) {
+      NativeModules.SirenModule.getInitialNotification()
+        .then((data: Record<string, unknown> | null) => {
+          if (data) {
+            console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+            console.log('🚀 [PUSH NOTIFICATION - COLD START LAUNCH VIA INTENT]');
+            console.log('📦 Intent Data:', JSON.stringify(data, null, 2));
+            console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+            stopSiren();
+            if (onNotificationOpened) {
+              onNotificationOpened(data);
+            }
+          }
+        })
+        .catch(() => { });
+    }
+
+    // 3. Notification opened from background state (FCM)
     const unsubscribeOnNotificationOpenedApp = onNotificationOpenedApp(
       messagingInstance,
       (remoteMessage: FirebaseRemoteMessage) => {
-        console.log('[notifications] Notification opened from background:', remoteMessage);
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        console.log('📱 [PUSH NOTIFICATION - OPENED FROM BACKGROUND]');
+        console.log('📦 RemoteMessage:', JSON.stringify(remoteMessage, null, 2));
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         stopSiren();
         if (onNotificationOpened && remoteMessage.data) {
           onNotificationOpened(remoteMessage.data);
@@ -169,11 +304,14 @@ export function setupNotificationListeners(
       }
     );
 
-    // 3. Notification opened from quit/killed state
+    // 4. Notification opened from quit/killed state (FCM)
     getInitialNotification(messagingInstance)
       .then((remoteMessage: FirebaseRemoteMessage | null) => {
         if (remoteMessage) {
-          console.log('[notifications] Notification opened from quit state:', remoteMessage);
+          console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+          console.log('💀 [PUSH NOTIFICATION - OPENED FROM KILLED STATE]');
+          console.log('📦 RemoteMessage:', JSON.stringify(remoteMessage, null, 2));
+          console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
           stopSiren();
           if (onNotificationOpened && remoteMessage.data) {
             onNotificationOpened(remoteMessage.data);
@@ -184,23 +322,24 @@ export function setupNotificationListeners(
         console.warn('[notifications] Failed to get initial notification:', err);
       });
 
-    // 4. Token refresh listener
+    // 5. Token refresh listener
     const unsubscribeOnTokenRefresh = onTokenRefresh(
       messagingInstance,
       async (newToken: string) => {
-        console.log('[notifications] FCM token refreshed:', newToken);
+        console.log('🔄 [PUSH NOTIFICATION] FCM token refreshed:', newToken);
         await AsyncStorage.setItem(FCM_TOKEN_STORAGE_KEY, newToken);
       }
     );
 
     return () => {
       unsubscribeOnMessage();
+      nativeNotificationSub.remove();
       unsubscribeOnNotificationOpenedApp();
       unsubscribeOnTokenRefresh();
     };
   } catch (err: unknown) {
     console.warn('[notifications] Failed to setup notification listeners:', err);
-    return () => {};
+    return () => { };
   }
 }
 
@@ -218,9 +357,26 @@ export function registerBackgroundMessageHandler() {
     setBackgroundMessageHandler(
       messagingInstance,
       async (remoteMessage: FirebaseRemoteMessage) => {
+        // If user is logged out, suppress background notification & siren
+        const session = await AsyncStorage.getItem('@botdetect_auth_session');
+        if (!session) {
+          console.log('🚫 [notifications] Ignored background message because user is logged out.');
+          return;
+        }
+
         console.log('[notifications] Background message handled in headless mode:', remoteMessage);
-        // Play continuous siren when background message arrives on Android
-        playSiren();
+        const fullPayload: Record<string, unknown> = {
+          ...remoteMessage.data,
+          title: remoteMessage.notification?.title || (remoteMessage.data?.title as string),
+          body: remoteMessage.notification?.body || (remoteMessage.data?.body as string),
+        };
+
+        // Play siren only if notification matches siren types or has soundUrl
+        if (shouldPlaySiren(fullPayload)) {
+          const notifType = extractNotificationType(fullPayload);
+          console.log('[notifications] Background siren triggered for type:', notifType, 'soundUrl:', fullPayload.soundUrl);
+          playSiren(0, notifType, fullPayload);
+        }
       }
     );
   } catch (err: unknown) {

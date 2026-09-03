@@ -1,5 +1,5 @@
-export const CURRENT_BUNDLE_VERSION = '1.0.0';
-export const CURRENT_NATIVE_VERSION = '0.0.1';
+export const CURRENT_BUNDLE_VERSION = '1.1.0';
+export const CURRENT_NATIVE_VERSION = '1.1.0';
 
 export const GITHUB_OTA_BASE_URL =
   'https://raw.githubusercontent.com/arjun-jatav/BotDetectApp/main/dist/ota';

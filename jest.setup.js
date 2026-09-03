@@ -17,6 +17,37 @@ const mockAsyncStorage = {
 
 jest.mock('@react-native-async-storage/async-storage', () => mockAsyncStorage);
 
+jest.mock('@react-native-community/netinfo', () => {
+  const defaultState = {
+    type: 'wifi',
+    isConnected: true,
+    isInternetReachable: true,
+    details: {
+      isConnectionExpensive: false,
+    },
+  };
+  return {
+    __esModule: true,
+    default: {
+      configure: jest.fn(),
+      fetch: jest.fn().mockResolvedValue(defaultState),
+      addEventListener: jest.fn(() => jest.fn()),
+      useNetInfo: jest.fn(() => defaultState),
+    },
+    NetInfoStateType: {
+      none: 'none',
+      unknown: 'unknown',
+      cellular: 'cellular',
+      wifi: 'wifi',
+      bluetooth: 'bluetooth',
+      ethernet: 'ethernet',
+      wimax: 'wimax',
+      vpn: 'vpn',
+      other: 'other',
+    },
+  };
+});
+
 jest.mock('@react-native-firebase/messaging', () => {
   const mockMessaging = () => ({
     requestPermission: jest.fn().mockResolvedValue(1),
@@ -70,4 +101,3 @@ jest.mock('./src/shared/services/otaUpdate', () => {
     applyOTAUpdate: jest.fn().mockResolvedValue(true),
   };
 });
-

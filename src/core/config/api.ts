@@ -3,4 +3,5 @@ export const DEFAULT_WEB_URL = 'https://v2.checkprojectstatus.com/admin';
 
 export const ENDPOINTS = {
   LOGIN: `${API_BASE_URL}/api/login`,
+  LOGOUT: `${API_BASE_URL}/api/logout`,
 };

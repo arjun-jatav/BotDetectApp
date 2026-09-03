@@ -5,7 +5,6 @@ import {
   Text,
   TouchableOpacity,
   Platform,
-  Alert,
   ScrollView,
   TouchableWithoutFeedback,
   Keyboard,
@@ -16,13 +15,48 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LoginHeader } from '../components/LoginHeader';
 import { InputField } from '../../../shared/components/InputField';
 import { PrimaryButton } from '../../../shared/components/PrimaryButton';
-import { loginUser } from '../api/authApi';
+import { loginUser, getSavedCredentials, saveSavedCredentials, clearSavedCredentials } from '../api/authApi';
 import { getFCMToken, requestNotificationPermission } from '../../../shared/services/notifications';
 import { LoginResponse } from '../../../core/types';
 
 interface LoginScreenProps {
   onLoginSuccess?: (userData?: LoginResponse) => void;
   onNavigateToSignUp?: () => void;
+}
+
+function formatAuthErrorMessage(rawError?: string | null): string {
+  if (!rawError || typeof rawError !== 'string') {
+    return 'Invalid email or password. Please try again.';
+  }
+
+  const trimmed = rawError.trim();
+
+  if (
+    trimmed.includes('invalid_email_or_password') ||
+    trimmed.includes('invalid_credentials') ||
+    trimmed.includes('invalid email or password')
+  ) {
+    return 'Invalid email or password. Please try again.';
+  }
+
+  if (trimmed.includes('user_not_found') || trimmed.includes('account_not_found')) {
+    return 'Account not found with this email.';
+  }
+
+  if (trimmed.includes('account_disabled') || trimmed.includes('user_disabled')) {
+    return 'Your account has been deactivated. Please contact your workspace administrator.';
+  }
+
+  if (trimmed.includes('too_many_requests') || trimmed.includes('rate_limit')) {
+    return 'Too many attempts. Please wait a moment and try again.';
+  }
+
+  if (trimmed.startsWith('errors.')) {
+    const clean = trimmed.replace(/^errors\.(auth\.)?/, '').replace(/_/g, ' ');
+    return clean.charAt(0).toUpperCase() + clean.slice(1);
+  }
+
+  return trimmed;
 }
 
 export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
@@ -68,6 +102,36 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
     };
   }, []);
 
+  // Load saved credentials on mount if available
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadSavedCredentials() {
+      try {
+        const saved = await getSavedCredentials();
+        if (isMounted && saved) {
+          if (saved.identifier) {
+            setIdentifier(saved.identifier);
+          }
+          if (saved.password) {
+            setPassword(saved.password);
+          }
+          if (typeof saved.keepSignedIn === 'boolean') {
+            setKeepSignedIn(saved.keepSignedIn);
+          }
+        }
+      } catch (err) {
+        console.warn('[LoginScreen] Failed to load saved credentials:', err);
+      }
+    }
+
+    loadSavedCredentials();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   // Retrieve FCM Token when the login screen loads
   useEffect(() => {
     let isMounted = true;
@@ -92,6 +156,20 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
     };
   }, []);
 
+  const handleToggleKeepSignedIn = async () => {
+    const nextState = !keepSignedIn;
+    setKeepSignedIn(nextState);
+    if (!nextState) {
+      await clearSavedCredentials();
+    } else if (identifier.trim() && password) {
+      await saveSavedCredentials({
+        identifier: identifier.trim(),
+        password,
+        keepSignedIn: true,
+      });
+    }
+  };
+
   const handleIdentifierChange = (text: string) => {
     setIdentifier(text);
     if (identifierError) {
@@ -115,9 +193,14 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
   const validateForm = (): boolean => {
     let isValid = true;
 
-    // Identifier validation (Email or Username)
-    if (!identifier.trim()) {
+    // Email validation
+    const emailTrimmed = identifier.trim();
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailTrimmed) {
       setIdentifierError('Email is required');
+      isValid = false;
+    } else if (!emailRegex.test(emailTrimmed)) {
+      setIdentifierError('Please enter a valid email address');
       isValid = false;
     }
 
@@ -149,7 +232,7 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
       }
 
       console.log('[LoginScreen] Submitting login with FCM token:', currentToken);
-      const response = await loginUser(identifier, password, 10000, currentToken);
+      const response = await loginUser(identifier, password, 10000, currentToken, keepSignedIn);
       setLoading(false);
       if (onLoginSuccess) {
         onLoginSuccess(response);
@@ -160,15 +243,8 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
         err instanceof Error
           ? err.message
           : 'Login failed. Please check your credentials and try again.';
-      setApiError(msg);
+      setApiError(formatAuthErrorMessage(msg));
     }
-  };
-
-  const handleForgotPassword = () => {
-    Alert.alert(
-      'Forgot Password',
-      'Please contact your workspace administrator to reset your credentials.'
-    );
   };
 
   const scrollToBottom = () => {
@@ -238,24 +314,17 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
                 onSubmitEditing={handleLogin}
               />
 
-              {/* Keep Signed In & Forgot Password Row */}
+              {/* Keep Signed In Row */}
               <View style={styles.optionsRow}>
                 <TouchableOpacity
                   style={styles.checkboxContainer}
-                  onPress={() => setKeepSignedIn(!keepSignedIn)}
+                  onPress={handleToggleKeepSignedIn}
                   activeOpacity={0.7}
                 >
                   <View style={[styles.checkbox, keepSignedIn && styles.checkboxChecked]}>
                     {keepSignedIn && <Text style={styles.checkmark}>✓</Text>}
                   </View>
                   <Text style={styles.checkboxLabel}>Keep me signed in</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  onPress={handleForgotPassword}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                >
-                  <Text style={styles.forgotText}>Forgot password?</Text>
                 </TouchableOpacity>
               </View>
 
@@ -357,11 +426,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#475569',
     fontWeight: '500',
-  },
-  forgotText: {
-    color: '#EB322D',
-    fontSize: 13,
-    fontWeight: '700',
   },
   signInButton: {
     marginTop: 4,

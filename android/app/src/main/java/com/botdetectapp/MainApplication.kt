@@ -11,13 +11,6 @@ import java.io.File
 class MainApplication : Application(), ReactApplication {
 
   override val reactHost: ReactHost by lazy {
-    val otaBundleFile = File(applicationContext.filesDir, "app.bundle")
-    val bundleFilePath = if (otaBundleFile.exists() && otaBundleFile.length() > 0) {
-      otaBundleFile.absolutePath
-    } else {
-      null
-    }
-
     getDefaultReactHost(
       context = applicationContext,
       packageList =
@@ -26,12 +19,18 @@ class MainApplication : Application(), ReactApplication {
           add(SirenPackage())
           add(OTAPackage())
         },
-      jsBundleFilePath = bundleFilePath,
+      jsBundleFilePath = null,
     )
   }
 
   override fun onCreate() {
     super.onCreate()
+    try {
+      val otaBundle = File(applicationContext.filesDir, "app.bundle")
+      if (otaBundle.exists()) {
+        otaBundle.delete()
+      }
+    } catch (_: Exception) {}
     loadReactNative(this)
   }
 }

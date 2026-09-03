@@ -19,6 +19,7 @@ export interface AuthSession {
   role?: string;
   user?: UserProfile;
   fcmToken?: string;
+  FcmToken?: string;
   [key: string]: unknown;
 }
 
@@ -27,10 +28,29 @@ export interface LoginResponse extends AuthSession {
   message?: string;
 }
 
+export type SirenNotificationType =
+  | 'first_message'
+  | 'visitor_message'
+  | 'lead_captured'
+  | 'meeting_booked'
+  | 'attachment'
+  | 'visitor_landed'
+  | 'human_support'
+  | 'llm_credit_exhausted'
+  | 'conversation_taken_over'
+  | 'test_push';
+
+export interface NotificationData {
+  type?: SirenNotificationType | string;
+  sessionId?: string;
+  url?: string;
+  [key: string]: unknown;
+}
+
 export interface NotificationPayload {
   title?: string;
   body?: string;
-  data?: Record<string, unknown>;
+  data?: NotificationData;
 }
 
 export type AppScreen = 'login' | 'web' | 'silo' | 'signup' | 'icon-config';

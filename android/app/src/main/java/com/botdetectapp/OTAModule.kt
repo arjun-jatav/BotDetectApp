@@ -92,28 +92,20 @@ class OTAModule(private val reactContext: ReactApplicationContext) :
   fun reloadApp(promise: Promise) {
     UiThreadUtil.runOnUiThread {
       try {
-        Log.d("OTAModule", "Scheduling clean process restart via AlarmManager...")
-        val packageManager = reactContext.packageManager
-        val intent = packageManager.getLaunchIntentForPackage(reactContext.packageName)
-        if (intent != null) {
-          intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
-          val pendingIntent = PendingIntent.getActivity(
-            reactContext,
-            123456,
-            intent,
-            PendingIntent.FLAG_CANCEL_CURRENT or PendingIntent.FLAG_IMMUTABLE
-          )
-          val alarmManager = reactContext.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-          alarmManager.set(
-            AlarmManager.RTC,
-            System.currentTimeMillis() + 250,
-            pendingIntent
-          )
+        Log.d("OTAModule", "Reloading React Native context cleanly...")
+        val activity = reactContext.currentActivity
+        if (activity != null) {
+          activity.recreate()
           promise.resolve(true)
-          Process.killProcess(Process.myPid())
-          System.exit(0)
         } else {
-          promise.resolve(false)
+          val app = reactContext.applicationContext as? MainApplication
+          val reactHost = app?.reactHost
+          if (reactHost != null) {
+            reactHost.reload("OTA dynamic update")
+            promise.resolve(true)
+          } else {
+            promise.resolve(false)
+          }
         }
       } catch (e: Exception) {
         Log.e("OTAModule", "Reload failed: ${e.message}", e)

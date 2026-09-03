@@ -1,32 +1,62 @@
 package com.botdetectapp
 
+import android.app.NotificationManager
 import android.content.Context
 import android.media.AudioAttributes
-import android.media.AudioFormat
-import android.media.AudioTrack
-import android.media.Ringtone
-import android.media.RingtoneManager
+import android.media.MediaPlayer
 import android.os.Build
+import android.os.PowerManager
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
+import android.util.Log
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
 import com.facebook.react.bridge.ReactMethod
 import com.facebook.react.bridge.Promise
+import com.facebook.react.modules.core.DeviceEventManagerModule
 import kotlin.concurrent.thread
-import kotlin.math.sin
 
 class SirenModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaModule(reactContext) {
+
+    init {
+        sharedReactContext = reactContext
+    }
 
     override fun getName(): String {
         return "SirenModule"
     }
 
     @ReactMethod
-    fun playSiren(durationSeconds: Int, promise: Promise?) {
+    fun setAuthStatus(isLoggedIn: Boolean, promise: Promise?) {
         try {
-            playSirenDirectly(reactApplicationContext, durationSeconds)
+            setLoggedInState(reactApplicationContext, isLoggedIn)
+            if (!isLoggedIn) {
+                stopSirenDirectly(reactApplicationContext)
+                val nm = reactApplicationContext.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+                nm?.cancelAll()
+            }
+            promise?.resolve(true)
+        } catch (e: Exception) {
+            promise?.reject("AUTH_STATUS_ERROR", e.message)
+        }
+    }
+
+    @ReactMethod
+    fun playSiren(durationSeconds: Double, notificationType: String?, promise: Promise?) {
+        try {
+            playSirenDirectly(reactApplicationContext, durationSeconds.toInt(), notificationType)
+            promise?.resolve(true)
+        } catch (e: Exception) {
+            promise?.reject("SIREN_ERROR", e.message)
+        }
+    }
+
+    @ReactMethod
+    fun playDynamicSiren(durationSeconds: Double, notificationType: String?, soundUrl: String?, soundEnabled: String?, soundType: String?, promise: Promise?) {
+        try {
+            val enabled = soundEnabled == null || soundEnabled.equals("true", ignoreCase = true) || soundEnabled == "1"
+            playSirenDirectly(reactApplicationContext, durationSeconds.toInt(), notificationType, soundUrl, enabled, soundType)
             promise?.resolve(true)
         } catch (e: Exception) {
             promise?.reject("SIREN_ERROR", e.message)
@@ -43,134 +73,340 @@ class SirenModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaM
         }
     }
 
+    @ReactMethod
+    fun getInitialNotification(promise: Promise?) {
+        try {
+            val data = MainActivity.initialNotificationData
+            MainActivity.initialNotificationData = null
+            promise?.resolve(data)
+        } catch (_: Exception) {
+            promise?.resolve(null)
+        }
+    }
+
     companion object {
+        private const val TAG = "SirenModule"
+        private const val PREFS_NAME = "botdetect_prefs"
+        private const val PREF_IS_LOGGED_IN = "is_logged_in"
+
+        fun isUserLoggedIn(context: Context): Boolean {
+            val prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            return prefs.getBoolean(PREF_IS_LOGGED_IN, false)
+        }
+
+        fun setLoggedInState(context: Context, isLoggedIn: Boolean) {
+            val prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            prefs.edit().putBoolean(PREF_IS_LOGGED_IN, isLoggedIn).apply()
+            Log.i(TAG, "Native auth status set to: $isLoggedIn")
+        }
+
+        var sharedReactContext: ReactApplicationContext? = null
+
         @Volatile
         private var isPlaying = false
-        private var sirenThread: Thread? = null
-        private var audioTrack: AudioTrack? = null
-        private var ringtone: Ringtone? = null
+        private var activeSoundUrl: String? = null
+        private var preparingPlayer: MediaPlayer? = null
+        private var mediaPlayer: MediaPlayer? = null
+        private val activePlayers = java.util.Collections.synchronizedList(mutableListOf<MediaPlayer>())
+        private var wakeLock: PowerManager.WakeLock? = null
+
+        private fun acquireWakeLock(context: Context) {
+            try {
+                if (wakeLock == null) {
+                    val pm = context.applicationContext.getSystemService(Context.POWER_SERVICE) as? PowerManager
+                    wakeLock = pm?.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "BotDetectApp:SirenWakeLock")
+                }
+                wakeLock?.let {
+                    if (!it.isHeld) {
+                        it.acquire(10 * 60 * 1000L) // Max 10 minutes safeguard
+                    }
+                }
+            } catch (_: Exception) {}
+        }
+
+        private fun releaseWakeLock() {
+            try {
+                wakeLock?.let {
+                    if (it.isHeld) {
+                        it.release()
+                    }
+                }
+                wakeLock = null
+            } catch (_: Exception) {}
+        }
+
+        // Notification and sound types mapping
+        private val VISITOR_LANDED_TYPES = setOf(
+            "visitor_landed",
+            "visitor-landed",
+            "visitorlanded",
+            "visitor_landed_alarm",
+            "new_visitor",
+            "new-visitor",
+            "newvisitor",
+            "visitor_activity",
+            "visitor-activity",
+            "visitoractivity",
+            "first_message",
+            "first-message",
+            "firstmessage",
+            "visitor_message",
+            "visitor-message",
+            "visitormessage",
+            "lead_captured",
+            "lead-captured",
+            "leadcaptured",
+            "meeting_booked",
+            "meeting-booked",
+            "meetingbooked"
+        )
+
+        private val HUMAN_INTERVENTION_TYPES = setOf(
+            "human_support",
+            "human-support",
+            "humansupport",
+            "human_support_alarm",
+            "human_intervention",
+            "human-intervention",
+            "humanintervention",
+            "high_alert",
+            "high-alert",
+            "highalert",
+            "llm_credit_exhausted",
+            "llm-credit-exhausted",
+            "llmcreditexhausted",
+            "conversation_taken_over",
+            "conversation-taken-over",
+            "conversationtakenover"
+        )
+
+        private fun isHumanIntervention(notificationType: String?, soundType: String?): Boolean {
+            val normType = notificationType?.trim()?.lowercase()?.replace("-", "_") ?: ""
+            val normSound = soundType?.trim()?.lowercase()?.replace("-", "_") ?: ""
+            return HUMAN_INTERVENTION_TYPES.contains(normType) ||
+                   HUMAN_INTERVENTION_TYPES.contains(normSound) ||
+                   normSound == "high_alert"
+        }
 
         @Synchronized
-        fun playSirenDirectly(context: Context, durationSeconds: Int = 0) {
-            stopSirenDirectly(context)
+        fun playSirenDirectly(
+            context: Context,
+            durationSeconds: Int = 0,
+            notificationType: String? = null,
+            soundUrl: String? = null,
+            soundEnabled: Boolean = true,
+            soundType: String? = null,
+            title: String? = null,
+            body: String? = null,
+            url: String? = null
+        ) {
+            // If already playing the exact sound URL, avoid duplicate playback collision
+            if (isPlaying && !soundUrl.isNullOrBlank() && soundUrl == activeSoundUrl) {
+                Log.d(TAG, "playSirenDirectly already playing soundUrl $soundUrl, skipping duplicate start")
+                return
+            }
+
+            stopAudioOnly(context)
+
+            val isIntervention = isHumanIntervention(notificationType, soundType)
+            val effectiveDuration = if (isIntervention) (if (durationSeconds > 0) durationSeconds else 0) else (if (durationSeconds > 0) durationSeconds else 10)
+            val shouldLoopIndefinitely = isIntervention && (effectiveDuration <= 0)
+
+            // Notify React Native JS that a siren/alert has started
+            try {
+                val map = com.facebook.react.bridge.Arguments.createMap()
+                map.putString("type", notificationType ?: "")
+                map.putString("soundType", soundType ?: "")
+                map.putString("soundUrl", soundUrl ?: "")
+                map.putString("soundEnabled", if (soundEnabled) "true" else "false")
+                map.putBoolean("isHumanIntervention", isIntervention)
+                map.putBoolean("isLooping", shouldLoopIndefinitely)
+                map.putInt("durationSeconds", effectiveDuration)
+                if (!title.isNullOrBlank()) map.putString("title", title)
+                if (!body.isNullOrBlank()) map.putString("body", body)
+                if (!url.isNullOrBlank()) map.putString("url", url)
+                sharedReactContext
+                    ?.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
+                    ?.emit("onSirenStarted", map)
+            } catch (_: Exception) {}
+
+            if (!soundEnabled) {
+                Log.d(TAG, "playSirenDirectly audio skipped because soundEnabled is false")
+                return
+            }
+
             isPlaying = true
+            activeSoundUrl = soundUrl
+            acquireWakeLock(context)
 
             val vibrator = getVibratorService(context)
 
-            // Urgent Siren vibration pattern
-            val pattern = longArrayOf(0, 500, 200, 500, 200, 500, 200, 800)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                vibrator?.vibrate(VibrationEffect.createWaveform(pattern, 0))
+            if (isIntervention) {
+                // Urgent Siren continuous vibration pattern for Human Intervention
+                val pattern = longArrayOf(0, 500, 200, 500, 200, 500, 200, 800)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    vibrator?.vibrate(VibrationEffect.createWaveform(pattern, 0))
+                } else {
+                    @Suppress("DEPRECATION")
+                    vibrator?.vibrate(pattern, 0)
+                }
             } else {
-                @Suppress("DEPRECATION")
-                vibrator?.vibrate(pattern, 0)
+                // 10-second vibration pattern for regular notifications
+                val pattern = longArrayOf(
+                    0, 400, 200, 400, 200, 400, 200, 400, 200, 400,
+                    200, 400, 200, 400, 200, 400, 200, 400, 200, 400
+                )
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    vibrator?.vibrate(VibrationEffect.createWaveform(pattern, -1))
+                } else {
+                    @Suppress("DEPRECATION")
+                    vibrator?.vibrate(pattern, -1)
+                }
             }
 
-            // 1. Play loud Ringtone / Alarm
-            try {
-                val alertUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
-                    ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
-                    ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+            Log.d(TAG, "playSirenDirectly called with type: '$notificationType', soundType: '$soundType', isHumanIntervention: $isIntervention, duration: $effectiveDuration, soundUrl: '$soundUrl'")
 
-                if (alertUri != null) {
-                    val r = RingtoneManager.getRingtone(context.applicationContext, alertUri)
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                        r.isLooping = true
-                    }
-                    r.audioAttributes = AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_ALARM)
+            // 1. Stream dynamic sound from soundUrl key in push notification
+            if (!soundUrl.isNullOrBlank() && (soundUrl.startsWith("http://") || soundUrl.startsWith("https://"))) {
+                tryPlayRemoteSoundUrl(context, effectiveDuration, soundUrl, notificationType, soundType, vibrator, shouldLoopIndefinitely)
+            } else {
+                Log.d(TAG, "No remote soundUrl provided in push notification, audio playback skipped")
+            }
+        }
+
+        private fun tryPlayRemoteSoundUrl(
+            context: Context,
+            durationSeconds: Int,
+            soundUrl: String,
+            notificationType: String?,
+            soundType: String?,
+            vibrator: Vibrator?,
+            shouldLoop: Boolean
+        ): Boolean {
+            thread(start = true, name = "SirenStreamingWorker") {
+                try {
+                    Log.d(TAG, "Streaming dynamic push soundUrl: $soundUrl (duration: $durationSeconds, loopIndefinite: $shouldLoop)")
+                    val audioAttributes = AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_NOTIFICATION)
                         .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
                         .build()
-                    r.play()
-                    ringtone = r
-                }
-            } catch (_: Exception) {}
 
-            // 2. Synthesize piercing emergency warble sound via AudioTrack
-            sirenThread = thread(start = true) {
-                try {
-                    val sampleRate = 44100
-                    val minBufferSize = AudioTrack.getMinBufferSize(
-                        sampleRate,
-                        AudioFormat.CHANNEL_OUT_MONO,
-                        AudioFormat.ENCODING_PCM_16BIT
-                    )
+                    val player = MediaPlayer()
+                    activePlayers.add(player)
+                    preparingPlayer = player
+                    player.setWakeMode(context.applicationContext, PowerManager.PARTIAL_WAKE_LOCK)
+                    player.setAudioAttributes(audioAttributes)
 
-                    val audioAttributes = AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_MEDIA)
-                        .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
-                        .build()
+                    val cleanUrl = soundUrl.trim().replace(" ", "%20")
+                    player.setDataSource(cleanUrl)
 
-                    val audioFormat = AudioFormat.Builder()
-                        .setSampleRate(sampleRate)
-                        .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
-                        .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
-                        .build()
-
-                    val track = AudioTrack.Builder()
-                        .setAudioAttributes(audioAttributes)
-                        .setAudioFormat(audioFormat)
-                        .setBufferSizeInBytes(minBufferSize * 4)
-                        .setTransferMode(AudioTrack.MODE_STREAM)
-                        .build()
-
-                    audioTrack = track
-                    track.setVolume(1.0f)
-                    track.play()
-
-                    val hasDurationLimit = durationSeconds > 0
-                    val totalSamples = if (hasDurationLimit) (sampleRate.toLong() * durationSeconds.toLong()) else Long.MAX_VALUE
-                    val buffer = ShortArray(2048)
-                    var currentSample = 0L
-                    var phase = 0.0
-
-                    while (isPlaying && (!hasDurationLimit || currentSample < totalSamples)) {
-                        for (i in buffer.indices) {
-                            val progress = (currentSample + i).toDouble() / sampleRate
-                            val frequency = 1100.0 + 450.0 * sin(2.0 * Math.PI * progress / 0.6)
-                            val angle = 2.0 * Math.PI * frequency / sampleRate
-                            phase += angle
-                            if (phase > 2.0 * Math.PI) {
-                                phase -= 2.0 * Math.PI
+                    player.setOnErrorListener { mp, what, extra ->
+                        Log.w(TAG, "Dynamic MediaPlayer error (what: $what, extra: $extra) for $soundUrl")
+                        synchronized(SirenModule::class.java) {
+                            if (preparingPlayer === mp) {
+                                preparingPlayer = null
                             }
-                            buffer[i] = (sin(phase) * 30000.0).toInt().toShort()
+                            try {
+                                mp.reset()
+                                mp.release()
+                            } catch (_: Exception) {}
+                            activePlayers.remove(mp)
                         }
-                        track.write(buffer, 0, buffer.size)
-                        currentSample += buffer.size
+                        true
                     }
 
-                    try {
-                        track.stop()
-                        track.release()
-                    } catch (_: Exception) {}
+                    player.prepare() // Synchronous prepare on background worker thread ensures buffering completes in kill mode
 
-                    stopRingtoneInternal()
-                    stopVibratorService(vibrator)
-                    isPlaying = false
-                } catch (_: Exception) {
-                    isPlaying = false
+                    synchronized(SirenModule::class.java) {
+                        if (!isPlaying || preparingPlayer !== player) {
+                            try {
+                                player.reset()
+                            } catch (_: Exception) {}
+                            try {
+                                player.release()
+                            } catch (_: Exception) {}
+                            activePlayers.remove(player)
+                            if (preparingPlayer === player) {
+                                preparingPlayer = null
+                            }
+                            return@thread
+                        }
+                        preparingPlayer = null
+                        mediaPlayer = player
+
+                        // Loop indefinitely ONLY for Human Intervention; regular notifications play 1 full time from start to end
+                        player.isLooping = shouldLoop
+                        player.setVolume(1.0f, 1.0f)
+
+                        if (!shouldLoop) {
+                            player.setOnCompletionListener { mp ->
+                                Log.d(TAG, "Completed 1 full playback of dynamic soundUrl: $soundUrl")
+                                synchronized(SirenModule::class.java) {
+                                    try { mp.stop() } catch (_: Exception) {}
+                                    try { mp.reset() } catch (_: Exception) {}
+                                    try { mp.release() } catch (_: Exception) {}
+                                    activePlayers.remove(mp)
+                                    if (mediaPlayer === mp) mediaPlayer = null
+                                    if (activePlayers.isEmpty()) {
+                                        isPlaying = false
+                                        activeSoundUrl = null
+                                        releaseWakeLock()
+                                    }
+                                }
+                            }
+                        }
+
+                        player.start()
+                        Log.d(TAG, "Successfully started streaming dynamic MP3 from $soundUrl (isLooping: $shouldLoop)")
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to stream dynamic soundUrl ($soundUrl): ${e.message}", e)
+                    synchronized(SirenModule::class.java) {
+                        preparingPlayer = null
+                    }
                 }
             }
+            return true
+        }
+
+        @Synchronized
+        fun stopAudioOnly(context: Context) {
+            isPlaying = false
+            activeSoundUrl = null
+
+            synchronized(activePlayers) {
+                val iterator = activePlayers.iterator()
+                while (iterator.hasNext()) {
+                    val p = iterator.next()
+                    try {
+                        if (p.isPlaying) {
+                            p.stop()
+                        }
+                    } catch (_: Exception) {}
+                    try {
+                        p.reset()
+                        p.release()
+                    } catch (_: Exception) {}
+                }
+                activePlayers.clear()
+            }
+
+            preparingPlayer = null
+            mediaPlayer = null
+
+            stopVibratorService(getVibratorService(context))
+            releaseWakeLock()
         }
 
         @Synchronized
         fun stopSirenDirectly(context: Context) {
-            isPlaying = false
-            stopRingtoneInternal()
+            stopAudioOnly(context)
 
+            // Immediately notify React Native to dismiss the in-app banner
             try {
-                audioTrack?.let {
-                    it.stop()
-                    it.release()
-                }
-                audioTrack = null
-            } catch (_: Exception) {}
-
-            stopVibratorService(getVibratorService(context))
-
-            try {
-                sirenThread?.interrupt()
-                sirenThread = null
+                sharedReactContext
+                    ?.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
+                    ?.emit("onSirenStopped", null)
             } catch (_: Exception) {}
         }
 
@@ -187,17 +423,6 @@ class SirenModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaM
         private fun stopVibratorService(vibrator: Vibrator?) {
             try {
                 vibrator?.cancel()
-            } catch (_: Exception) {}
-        }
-
-        private fun stopRingtoneInternal() {
-            try {
-                ringtone?.let {
-                    if (it.isPlaying) {
-                        it.stop()
-                    }
-                }
-                ringtone = null
             } catch (_: Exception) {}
         }
     }
